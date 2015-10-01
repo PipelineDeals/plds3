@@ -2,16 +2,17 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"mime"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/mitchellh/goamz/aws"
 	"github.com/mitchellh/goamz/s3"
+	"github.com/rakyll/pb"
 )
 
 const (
@@ -30,6 +31,8 @@ var (
 )
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	log.SetOutput(os.Stdout)
 	log.SetFlags(0)
 
@@ -51,16 +54,17 @@ func main() {
 	fileList, err := GetFileList(*directory)
 
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
+
+	count := len(fileList)
+	bar := pb.StartNew(count)
 
 	for _, path := range fileList {
-		err := UploadFile(path, *directory, *bucket, *key)
-
-		if err != nil {
-			log.Fatal(err)
-		}
+		UploadFile(path, *directory, *bucket, *key)
+		bar.Increment()
 	}
+	bar.FinishPrint("All done!")
 }
 
 func GetFileList(dir string) (fileList []string, err error) {
@@ -74,11 +78,11 @@ func GetFileList(dir string) (fileList []string, err error) {
 	return fileList, err
 }
 
-func UploadFile(path string, dir string, bucketName string, prefixKey string) (err error) {
+func UploadFile(path string, dir string, bucketName string, prefixKey string) {
 	auth, err := aws.EnvAuth()
 
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	client := s3.New(auth, aws.USEast)
@@ -86,12 +90,12 @@ func UploadFile(path string, dir string, bucketName string, prefixKey string) (e
 
 	file, err := os.Open(path)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	stat, err := file.Stat()
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	ext := filepath.Ext(path)
@@ -100,6 +104,7 @@ func UploadFile(path string, dir string, bucketName string, prefixKey string) (e
 	headers := map[string][]string{
 		"Content-Length": {strconv.FormatInt(stat.Size(), 10)},
 		"Content-Type":   {fileType},
+		"Cache-Control":  {"max-age=31104000"},
 	}
 
 	relativePath := strings.TrimPrefix(path, dir+"/")
@@ -111,12 +116,8 @@ func UploadFile(path string, dir string, bucketName string, prefixKey string) (e
 	err = b.PutReaderHeader(relativePath, file, stat.Size(), headers, s3.ACL("public-read"))
 
 	if err != nil {
-		return err
+		panic(err)
 	}
-
-	fmt.Println(relativePath)
-
-	return nil
 }
 
 func printHelp() {
