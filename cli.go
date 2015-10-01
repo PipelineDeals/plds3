@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mitchellh/goamz/aws"
 	"github.com/mitchellh/goamz/s3"
@@ -84,6 +85,8 @@ func (u *Upload) Put() {
 
 	relativePath := u.RelativePath()
 
+	fmt.Printf("Path: %s\n", relativePath)
+
 	err = b.PutReaderHeader(relativePath, file, stat.Size(), headers, s3.ACL("public-read"))
 
 	if err != nil {
@@ -110,12 +113,12 @@ func (w Worker) start() {
 			select {
 			case upload := <-w.uploadQueue:
 				// Dispatcher has added a upload to my upload.
-				fmt.Printf("worker%d started: uploading %s to %s/%s/%s\n", w.id, upload.Path, upload.Bucket, upload.PrefixKey, upload.Path)
+				// fmt.Printf("worker%d started: uploading %s to %s/%s/%s\n", w.id, upload.Path, upload.Bucket, upload.PrefixKey, upload.Path)
 				upload.Put()
 
 				upload.WaitGroup.Done()
 
-				fmt.Printf("worker%d finished uploading %s!\n", w.id, upload.Path)
+				// fmt.Printf("worker%d finished uploading %s!\n", w.id, upload.Path)
 			}
 		}
 	}()
@@ -172,6 +175,8 @@ func main() {
 	}
 
 	wg.Wait()
+
+	time.Sleep(10000 * time.Millisecond)
 }
 
 func GetFileList(dir string) (fileList []string, err error) {
