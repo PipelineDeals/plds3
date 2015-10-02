@@ -207,6 +207,10 @@ func main() {
 
 func GetFileList(dir string) (fileList []string, err error) {
 	err = filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			log.Fatalf("Looks like %s isn't a valid app directory\n", path)
+		}
+
 		if fi.Mode().IsRegular() {
 			fileList = append(fileList, path)
 		}
