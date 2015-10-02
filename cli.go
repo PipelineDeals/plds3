@@ -6,12 +6,12 @@ import (
 	"log"
 	"mime"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/mitchellh/goamz/aws"
 	"github.com/mitchellh/goamz/s3"
@@ -25,10 +25,10 @@ const (
 
 var (
 	bucket       = flag.String("b", "assets.pipelinedeals.com", "AWS S3 bucket to upload assets to")
-	directory    = flag.String("d", "./public", "Local assets directory to upload to S3")
+	directory    = flag.String("d", "", "Directory of PLD application")
 	key          = flag.String("k", "", "Key to preface to asset")
-	maxWorkers   = flag.Int("w", 4, "Max number of workers to start")
-	maxQueueSize = flag.Int("q", 100, "Max size of upload queue")
+	maxWorkers   = flag.Int("w", 50, "Max number of workers to start")
+	maxQueueSize = flag.Int("q", 1000, "Max size of upload queue")
 	help         = flag.Bool("help", false, "You're looking at it")
 	h            = flag.Bool("h", false, "You're looking at it")
 	version      = flag.Bool("v", false, "Show version")
@@ -46,7 +46,7 @@ func (u *Upload) RelativePath() string {
 	relativePath := strings.TrimPrefix(u.Path, u.Dir+"/")
 
 	if u.PrefixKey != "" {
-		relativePath = "/" + u.PrefixKey + "/" + relativePath
+		relativePath = u.PrefixKey + "/" + relativePath
 	}
 	return relativePath
 }
@@ -58,23 +58,19 @@ func (u *Upload) FileType() string {
 }
 
 func (u *Upload) Put() {
-	auth, err := aws.EnvAuth()
-
-	if err != nil {
-		panic(err)
-	}
-
+	auth, _ := aws.EnvAuth()
 	client := s3.New(auth, aws.USEast)
 	b := client.Bucket(u.Bucket)
 
 	file, err := os.Open(u.Path)
+	defer file.Close()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	stat, err := file.Stat()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	headers := map[string][]string{
@@ -85,12 +81,12 @@ func (u *Upload) Put() {
 
 	relativePath := u.RelativePath()
 
-	fmt.Printf("Path: %s\n", relativePath)
-
 	err = b.PutReaderHeader(relativePath, file, stat.Size(), headers, s3.ACL("public-read"))
 
+	fmt.Printf("Path: %s\n", relativePath)
+
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 }
@@ -124,6 +120,15 @@ func (w Worker) start() {
 	}()
 }
 
+func init() {
+	_, err := aws.EnvAuth()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+}
+
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
@@ -145,12 +150,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	fileList, err := GetFileList(*directory)
-
-	if err != nil {
-		panic(err)
-	}
-
 	uploadQueue := make(chan *Upload, *maxQueueSize)
 	var wg sync.WaitGroup
 
@@ -159,10 +158,17 @@ func main() {
 		worker.start()
 	}
 
-	for _, path := range fileList {
+	publicDir := path.Clean(*directory) + "/public"
+	publicFileList, err := GetFileList(publicDir)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, path := range publicFileList {
 		upload := &Upload{
 			Path:      path,
-			Dir:       *directory,
+			Dir:       publicDir,
 			Bucket:    *bucket,
 			PrefixKey: *key,
 			WaitGroup: &wg,
@@ -174,14 +180,34 @@ func main() {
 		}()
 	}
 
-	wg.Wait()
+	appJsDir := path.Clean(*directory) + "/app/javascripts"
+	appJsFileList, err := GetFileList(appJsDir)
 
-	time.Sleep(10000 * time.Millisecond)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, path := range appJsFileList {
+		upload := &Upload{
+			Path:      path,
+			Dir:       appJsDir,
+			Bucket:    *bucket,
+			PrefixKey: *key + "/app/javascripts",
+			WaitGroup: &wg,
+		}
+
+		wg.Add(1)
+		go func() {
+			uploadQueue <- upload
+		}()
+	}
+
+	wg.Wait()
 }
 
 func GetFileList(dir string) (fileList []string, err error) {
-	err = filepath.Walk(dir, func(path string, f os.FileInfo, err error) error {
-		if !f.IsDir() {
+	err = filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
+		if fi.Mode().IsRegular() {
 			fileList = append(fileList, path)
 		}
 		return nil
@@ -192,10 +218,10 @@ func GetFileList(dir string) (fileList []string, err error) {
 
 func printHelp() {
 	log.Println("-b\t\tAWS S3 target bucket, default: assets.pipelinedeals.com")
-	log.Println("-d\t\tLocal assets directory to upload to S3, default: ./public")
+	log.Println("-d\t\tDirectory of PLD application, default: ''")
 	log.Println("-k\t\tKey to preface the asset with, default: ''")
-	log.Println("-w\t\tMax number of workers to start, default: 4")
-	log.Println("-q\t\tKey Max size of upload queue, default: 100")
+	log.Println("-w\t\tMax number of workers to start, default: 50")
+	log.Println("-q\t\tKey Max size of upload queue, default: 1000")
 	log.Println("-v\t\tShow version and license information")
 	log.Println("-h\t\tThis help screen")
 }
