@@ -2,25 +2,20 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
-	"mime"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/mitchellh/goamz/aws"
-	"github.com/mitchellh/goamz/s3"
 )
 
 const (
 	NAME    = "PipelineDeals S3 asset uploader"
 	LICENSE = "Licensed under the MIT license"
-	VERSION = "0.3.0"
+	VERSION = "0.4.0"
 )
 
 var (
@@ -33,87 +28,6 @@ var (
 	h            = flag.Bool("h", false, "You're looking at it")
 	version      = flag.Bool("v", false, "Show version")
 )
-
-type Upload struct {
-	Path      string
-	Dir       string
-	Bucket    string
-	PrefixKey string
-	WaitGroup *sync.WaitGroup
-}
-
-func (u *Upload) RelativePath() string {
-	relativePath := strings.TrimPrefix(u.Path, u.Dir+"/")
-
-	if u.PrefixKey != "" {
-		relativePath = u.PrefixKey + "/" + relativePath
-	}
-	return relativePath
-}
-
-func (u *Upload) FileType() string {
-	ext := filepath.Ext(u.Path)
-	fileType := mime.TypeByExtension(ext)
-	return fileType
-}
-
-func (u *Upload) Put() {
-	auth, _ := aws.EnvAuth()
-	client := s3.New(auth, aws.USEast)
-	b := client.Bucket(u.Bucket)
-
-	file, err := os.Open(u.Path)
-	defer file.Close()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	stat, err := file.Stat()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	headers := map[string][]string{
-		"Content-Length": {strconv.FormatInt(stat.Size(), 10)},
-		"Content-Type":   {u.FileType()},
-		"Cache-Control":  {"max-age=31104000"},
-	}
-
-	relativePath := u.RelativePath()
-
-	err = b.PutReaderHeader(relativePath, file, stat.Size(), headers, s3.ACL("public-read"))
-
-	fmt.Printf("Path: %s\n", relativePath)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-}
-
-type Worker struct {
-	id          int
-	uploadQueue chan *Upload
-}
-
-func NewWorker(id int, uploadQueue chan *Upload) Worker {
-	return Worker{
-		id:          id,
-		uploadQueue: uploadQueue,
-	}
-}
-
-func (w Worker) start() {
-	go func() {
-		for {
-			select {
-			case upload := <-w.uploadQueue:
-				upload.Put()
-				upload.WaitGroup.Done()
-			}
-		}
-	}()
-}
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -142,11 +56,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	uploadQueue := make(chan *Upload, *maxQueueSize)
+	q := make(chan *Upload, *maxQueueSize)
 	var wg sync.WaitGroup
 
 	for i := 0; i < *maxWorkers; i++ {
-		worker := NewWorker(i, uploadQueue)
+		worker := NewWorker(i, q)
 		worker.start()
 	}
 
@@ -169,7 +83,7 @@ func main() {
 		wg.Add(1)
 
 		go func() {
-			uploadQueue <- upload
+			q <- upload
 		}()
 	}
 
