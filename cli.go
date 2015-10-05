@@ -20,12 +20,12 @@ import (
 const (
 	NAME    = "PipelineDeals S3 asset uploader"
 	LICENSE = "Licensed under the MIT license"
-	VERSION = "0.1"
+	VERSION = "0.3.0"
 )
 
 var (
 	bucket       = flag.String("b", "assets.pipelinedeals.com", "AWS S3 bucket to upload assets to")
-	directory    = flag.String("d", "", "Directory of PLD application")
+	directory    = flag.String("d", "", "Directory of assets to upload")
 	key          = flag.String("k", "", "Key to preface to asset")
 	maxWorkers   = flag.Int("w", 50, "Max number of workers to start")
 	maxQueueSize = flag.Int("q", 1000, "Max size of upload queue")
@@ -108,25 +108,11 @@ func (w Worker) start() {
 		for {
 			select {
 			case upload := <-w.uploadQueue:
-				// Dispatcher has added a upload to my upload.
-				// fmt.Printf("worker%d started: uploading %s to %s/%s/%s\n", w.id, upload.Path, upload.Bucket, upload.PrefixKey, upload.Path)
 				upload.Put()
-
 				upload.WaitGroup.Done()
-
-				// fmt.Printf("worker%d finished uploading %s!\n", w.id, upload.Path)
 			}
 		}
 	}()
-}
-
-func init() {
-	_, err := aws.EnvAuth()
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
 }
 
 func main() {
@@ -150,6 +136,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	_, err := aws.EnvAuth()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	uploadQueue := make(chan *Upload, *maxQueueSize)
 	var wg sync.WaitGroup
 
@@ -158,8 +150,8 @@ func main() {
 		worker.start()
 	}
 
-	publicDir := path.Clean(*directory) + "/public"
-	publicFileList, err := GetFileList(publicDir)
+	dir := path.Clean(*directory)
+	publicFileList, err := GetFileList(dir)
 
 	if err != nil {
 		log.Fatal(err)
@@ -168,35 +160,14 @@ func main() {
 	for _, path := range publicFileList {
 		upload := &Upload{
 			Path:      path,
-			Dir:       publicDir,
+			Dir:       dir,
 			Bucket:    *bucket,
 			PrefixKey: *key,
 			WaitGroup: &wg,
 		}
 
 		wg.Add(1)
-		go func() {
-			uploadQueue <- upload
-		}()
-	}
 
-	appJsDir := path.Clean(*directory) + "/app/javascripts"
-	appJsFileList, err := GetFileList(appJsDir)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, path := range appJsFileList {
-		upload := &Upload{
-			Path:      path,
-			Dir:       appJsDir,
-			Bucket:    *bucket,
-			PrefixKey: *key + "/app/javascripts",
-			WaitGroup: &wg,
-		}
-
-		wg.Add(1)
 		go func() {
 			uploadQueue <- upload
 		}()
@@ -222,7 +193,7 @@ func GetFileList(dir string) (fileList []string, err error) {
 
 func printHelp() {
 	log.Println("-b\t\tAWS S3 target bucket, default: assets.pipelinedeals.com")
-	log.Println("-d\t\tDirectory of PLD application, default: ''")
+	log.Println("-d\t\tDirectory of assets to upload, default: ''")
 	log.Println("-k\t\tKey to preface the asset with, default: ''")
 	log.Println("-w\t\tMax number of workers to start, default: 50")
 	log.Println("-q\t\tKey Max size of upload queue, default: 1000")
