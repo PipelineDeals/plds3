@@ -1,3 +1,25 @@
+# plds3: A command line tool to upload website assets to S3
+
+## Install
+
+```
+$ go get github.com/PipelineDeals/plds3
+```
+
+## Usage
+
+```
+$ plds3 -b domain-assets -d /app/public -k 1234asdf
+```
+
+For full usage syntax, view help:
+
+```
+$ plds3 -h
+```
+
+## LICENCE
+
 Copyright (c) 2015 PipelineDeals, Inc.
 
 MIT License
@@ -20,4 +42,3 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
