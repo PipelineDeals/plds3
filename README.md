@@ -18,7 +18,7 @@ For full usage syntax, view help:
 $ plds3 -h
 ```
 
-## LICENCE
+## LICENSE
 
 Copyright (c) 2015 PipelineDeals, Inc.
 
