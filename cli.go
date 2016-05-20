@@ -88,6 +88,8 @@ func main() {
 	}
 
 	wg.Wait()
+
+	log.Println("All done!")
 }
 
 func GetFileList(dir string) (fileList []string, err error) {

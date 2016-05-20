@@ -73,6 +73,7 @@ func (u *Upload) Put() {
 			break
 		}
 
+		log.Print(err)
 		time.Sleep(time.Duration(attempt) * time.Second)
 		attempt += 1
 		file.Seek(0 ,0)
