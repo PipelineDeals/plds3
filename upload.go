@@ -9,10 +9,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mitchellh/goamz/aws"
 	"github.com/mitchellh/goamz/s3"
 )
+
+var MaxAttempts = 5
 
 type Upload struct {
 	Path      string
@@ -61,9 +64,19 @@ func (u *Upload) Put() {
 
 	relativePath := u.RelativePath()
 
-	err = b.PutReaderHeader(relativePath, file, stat.Size(), headers, s3.ACL("public-read"))
+	attempt := 1
+	for {
+		fmt.Printf("[%d] Path: %s\n", attempt, relativePath)
 
-	fmt.Printf("Path: %s\n", relativePath)
+		err = b.PutReaderHeader(relativePath, file, stat.Size(), headers, s3.ACL("public-read"))
+		if err == nil || attempt >= MaxAttempts {
+			break
+		}
+
+		time.Sleep(time.Duration(attempt) * time.Second)
+		attempt += 1
+		file.Seek(0 ,0)
+	}
 
 	if err != nil {
 		log.Fatal(err)
