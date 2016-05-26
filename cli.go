@@ -15,7 +15,7 @@ import (
 const (
 	NAME    = "PipelineDeals S3 asset uploader"
 	LICENSE = "Licensed under the MIT license"
-	VERSION = "0.4.0"
+	VERSION = "0.5.0"
 )
 
 var (
@@ -88,6 +88,8 @@ func main() {
 	}
 
 	wg.Wait()
+
+	log.Println("All done!")
 }
 
 func GetFileList(dir string) (fileList []string, err error) {
@@ -118,7 +120,7 @@ func printHelp() {
 func startupInfo() {
 	log.Println(NAME, VERSION)
 	log.Println("")
-	log.Println("Copyright © 2015 PipelineDeals")
+	log.Println("Copyright © 2016 PipelineDeals")
 	log.Println(LICENSE)
 	log.Println("")
 }
